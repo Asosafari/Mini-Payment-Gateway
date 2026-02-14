@@ -1,0 +1,217 @@
+openapi: "3.1.0"
+
+info:
+  title: Mini Payment Gateway API
+  description: |
+    This API simulates a simple fintech payment gateway.
+    It allows merchants to create payments and check their status.
+  version: "1.0"
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /payments:
+    post:
+      summary: Create a new payment
+      description: |
+        Creates a payment request and returns payment URL.
+          Business Rules:
+          - Amount must be greater than 0.
+          - Currency must be supported by the system.
+          - Payment will be created with status PENDING.
+          - Payment link expires after 5 minutes.
+          - User can retry payment within 1 hour if payment fails.
+
+      operationId: createPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+            example:
+                userId: 1
+                amount: 250000
+                currency: IRR
+                callbackUrl: https://shop.com/callback
+
+      responses:
+        '201':
+          description: Payment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+              example:
+                  paymentId: PAY-12345
+                  status: PENDING
+                  paymentUrl: https://fakegateway.com/pay/PAY-12345
+
+
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                  timestamp: 2026-02-12T10:15:30
+                  status: 400
+                  error: Bad Request
+                  message: Amount must be greater than zero
+                  path: /payments
+        '401':
+          description: Unauthorized - invalid or missing token
+
+        '500':
+          description: Internal server error
+
+
+  /payments/{paymentId}:
+    get:
+      summary: Get payment status
+      description: |
+        Returns the current status of a payment.
+          Business Rules:
+        - If payment exists, return its current status.
+        - Possible statuses: PENDING, SUCCESS, FAILED, EXPIRED.
+        - If payment does not exist, return 404.
+        - If payment link has expired and not completed, status remains FAILED.
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          description: Unique identifier of the payment (UUID)
+          schema:
+            type: string
+            format: UUID
+            example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: Payment details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+              example:
+                paymentId: "550e8400-e29b-41d4-a716-446655440000"
+                amount: 1000
+                currency: "USD"
+                status: "SUCCESS"
+                createdAt: "2026-02-12T10:00:00Z"
+
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                  timestamp: 2026-02-12T10:20:00
+                  status: 404
+                  error: Not Found
+                  message: Payment with id PAY-12345 not found
+                  path: /payments/550e8400-e29b-41d4-a716-446655440000
+
+
+        '400':
+          description: Invalid paymentId format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                timestamp: 2026-02-12T10:20:00
+                status: 400
+                error: Bad Request
+                message: Invalid UUID format
+                path: /payments/invalid-id
+
+        '401':
+          description: Unauthorized - invalid or missing token
+
+        '500':
+          description: Internal server error
+
+
+
+components:
+  schemas:
+
+    CreatePaymentRequest:
+      type: object
+      description: Request object for creating a new payment
+      required:
+        - userId
+        - amount
+        - currency
+      properties:
+        userId:
+          type: integer
+          example: 1
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          description:
+            Payment mount . Must be greater than zero.
+          example: 250000
+        currency:
+          type: string
+          example: IRR
+        callbackUrl:
+          type: string
+          format: uri
+          example: https://shop.com/callback
+
+    PaymentResponse:
+      type: object
+      required:
+        - paymentId
+        - status
+      properties:
+        paymentId:
+          type: string
+          format: UUID
+          example: 550e8400-e29b-41d4-a716-446655440000
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        paymentUrl:
+          type: string
+          format: uri
+          example: https://fakegateway.com/pay/550e8400-e29b-41d4-a716-446655440000
+        retryAllowedUntil:
+          type: string
+          format: date-time
+          description: "Until when user can attempt payment again"
+
+
+    PaymentStatus:
+      type: string
+      description: Current lifecycle status of a payment
+      enum:
+        - PENDING
+        - SUCCESS
+        - FAILED
+        - EXPIRED
+
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          example: 400
+        error:
+          type: string
+          example: Bad Request
+        message:
+          type: string
+          example: Amount must be greater than zero
+        path:
+          type: string
+          example: /payments
